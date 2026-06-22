@@ -5,11 +5,14 @@ namespace ClipboardPinViewer;
 internal sealed partial class ViewerForm : Form
 {
     private const int PaddingSize = 1;
+    private const int ResizeGripSize = 18;
     private readonly Image? _ownedImage;
+    private readonly double? _fixedAspectRatio;
 
-    private ViewerForm(Image? ownedImage)
+    private ViewerForm(Image? ownedImage, double? fixedAspectRatio = null)
     {
         _ownedImage = ownedImage;
+        _fixedAspectRatio = fixedAspectRatio;
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(24, 27, 28);
         ForeColor = Color.FromArgb(242, 242, 242);
@@ -53,7 +56,7 @@ internal sealed partial class ViewerForm : Form
             Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Regular, GraphicsUnit.Point),
             Multiline = true,
             ReadOnly = true,
-            ScrollBars = ScrollBars.Both,
+            ScrollBars = ScrollBars.None,
             Text = text,
             WordWrap = true
         };
@@ -65,7 +68,7 @@ internal sealed partial class ViewerForm : Form
     private static ViewerForm CreateImageViewer(Image image, string title)
     {
         var bitmap = new Bitmap(image);
-        var form = new ViewerForm(bitmap)
+        var form = new ViewerForm(bitmap, (double)bitmap.Width / bitmap.Height)
         {
             Text = title,
             Size = EstimateImageWindowSize(bitmap.Size)
@@ -99,6 +102,15 @@ internal sealed partial class ViewerForm : Form
     protected override void WndProc(ref Message m)
     {
         const int wmNcHitTest = 0x0084;
+        const int wmSizing = 0x0214;
+
+        if (m.Msg == wmSizing && _fixedAspectRatio is not null)
+        {
+            KeepSizingAspectRatio(m.WParam, m.LParam, _fixedAspectRatio.Value);
+            m.Result = 1;
+            return;
+        }
+
         if (m.Msg == wmNcHitTest)
         {
             base.WndProc(ref m);
@@ -125,13 +137,12 @@ internal sealed partial class ViewerForm : Form
 
     private IntPtr HitTestForResize(IntPtr lParam)
     {
-        const int grip = 8;
         var cursor = PointToClient(new Point((short)((long)lParam & 0xFFFF), (short)(((long)lParam >> 16) & 0xFFFF)));
 
-        var left = cursor.X <= grip;
-        var right = cursor.X >= ClientSize.Width - grip;
-        var top = cursor.Y <= grip;
-        var bottom = cursor.Y >= ClientSize.Height - grip;
+        var left = cursor.X <= ResizeGripSize;
+        var right = cursor.X >= ClientSize.Width - ResizeGripSize;
+        var top = cursor.Y <= ResizeGripSize;
+        var bottom = cursor.Y >= ClientSize.Height - ResizeGripSize;
 
         return (top, bottom, left, right) switch
         {
@@ -145,6 +156,43 @@ internal sealed partial class ViewerForm : Form
             (_, _, _, true) => HitTestValues.Right,
             _ => HitTestValues.Client
         };
+    }
+
+    private static void KeepSizingAspectRatio(IntPtr edge, IntPtr rectPointer, double aspectRatio)
+    {
+        var rect = Marshal.PtrToStructure<WindowRect>(rectPointer);
+        var width = Math.Max(120, rect.Right - rect.Left);
+        var height = Math.Max(80, rect.Bottom - rect.Top);
+        var edgeValue = edge.ToInt32();
+
+        if (edgeValue is SizingEdges.Left or SizingEdges.Right)
+        {
+            height = Math.Max(80, (int)Math.Round(width / aspectRatio));
+            rect.Bottom = rect.Top + height;
+        }
+        else
+        {
+            width = Math.Max(120, (int)Math.Round(height * aspectRatio));
+            if (edgeValue is SizingEdges.Left or SizingEdges.TopLeft or SizingEdges.BottomLeft)
+            {
+                rect.Left = rect.Right - width;
+            }
+            else
+            {
+                rect.Right = rect.Left + width;
+            }
+        }
+
+        if (edgeValue is SizingEdges.Top or SizingEdges.TopLeft or SizingEdges.TopRight)
+        {
+            rect.Top = rect.Bottom - height;
+        }
+        else
+        {
+            rect.Bottom = rect.Top + height;
+        }
+
+        Marshal.StructureToPtr(rect, rectPointer, false);
     }
 
     private static Size EstimateImageWindowSize(Size imageSize)
@@ -175,6 +223,27 @@ internal sealed partial class ViewerForm : Form
         }
         return length;
     }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct WindowRect
+{
+    public int Left;
+    public int Top;
+    public int Right;
+    public int Bottom;
+}
+
+internal static class SizingEdges
+{
+    public const int Left = 1;
+    public const int Right = 2;
+    public const int Top = 3;
+    public const int TopLeft = 4;
+    public const int TopRight = 5;
+    public const int Bottom = 6;
+    public const int BottomLeft = 7;
+    public const int BottomRight = 8;
 }
 
 internal static partial class NativeMethods

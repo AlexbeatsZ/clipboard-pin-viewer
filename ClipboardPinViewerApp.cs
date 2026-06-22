@@ -42,29 +42,29 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
 
     public async Task ShowNextAsync()
     {
-        var items = await _clipboardHistory.GetItemsAsync();
+        var result = await _clipboardHistory.GetItemAsync(_showIndex);
         try
         {
-            if (items.Count == 0)
+            if (!result.HasAnyItems)
             {
                 _trayIcon.ShowBalloonTip(1200, "Clipboard Pin Viewer", "当前没有可展示的剪贴板历史。", ToolTipIcon.Info);
                 return;
             }
 
-            if (_showIndex >= items.Count)
+            if (result.ReachedEnd || result.Item is null)
             {
                 _trayIcon.ShowBalloonTip(1200, "Clipboard Pin Viewer", "已经到达系统剪贴板历史末尾。", ToolTipIcon.Info);
                 return;
             }
 
-            ShowItem(items[_showIndex], _showIndex + 1);
+            ShowItem(result.Item, _showIndex + 1);
             _showIndex++;
         }
         finally
         {
-            foreach (var item in items.Where(static item => item.DisposeImageAfterUse))
+            if (result.Item?.DisposeImageAfterUse == true)
             {
-                item.Image?.Dispose();
+                result.Item.Image?.Dispose();
             }
         }
     }

@@ -9,13 +9,12 @@
 
 - Windows clipboard history is available from C# via `Windows.ApplicationModel.DataTransfer.Clipboard.GetHistoryItemsAsync()` on this machine.
 - Keeping a single `Image` in a WinForms `PictureBox` with `SizeMode.Zoom` avoids the AHK implementation's repeated bitmap reload/resample behavior during resize.
-- 2026-06-22 proxy diagnosis: Windows browser proxy and `HTTP_PROXY`/`HTTPS_PROXY` were set to `127.0.0.1:7897`, served by `verge-mihomo`; WinHTTP remained direct.
-- 2026-06-22 proxy diagnosis: `www.google.com`, `accounts.google.com`, `aistudio.google.com`, and `generativelanguage.googleapis.com` worked through the proxy, while `gemini.google.com` timed out after the local HTTP `CONNECT` tunnel was established.
-- 2026-06-22 proxy diagnosis: Mihomo showed `gemini.google.com` matched `DomainKeyword google -> 良心云 -> 🇯🇵日本高速01|CTCU|0.5x`; the delay API returned `504 Timeout` for that node/group against Gemini, while US, Singapore, and Taiwan nodes had normal Gemini delays.
+- Loading only the selected clipboard history item avoids decoding every image in the history on each F1 press.
 
 # Task Board
 
 - [completed] Implement C# WinForms clipboard pin viewer.
 - [completed] Build and publish minimal runnable exe.
 - [completed] Commit, push, and create GitHub Release v0.1.0.
-- [pending] If approved, switch `良心云` away from `🇯🇵日本高速01|CTCU|0.5x` for Gemini or add a Gemini-specific rule to a working node/policy group.
+- [completed] Improve resize hit-testing, image aspect-ratio locking, F1 responsiveness, and hidden text scrollbars.
+- [completed] Commit, push, and create GitHub Release v0.1.1 with the interaction fixes.

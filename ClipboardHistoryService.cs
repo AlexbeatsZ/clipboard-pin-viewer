@@ -10,7 +10,7 @@ internal sealed class ClipboardHistoryService
     private const int MaxItems = 30;
     private readonly List<ClipboardItem> _fallbackItems = [];
 
-    public async Task<IReadOnlyList<ClipboardItem>> GetItemsAsync()
+    public async Task<ClipboardReadResult> GetItemAsync(int index)
     {
         try
         {
@@ -19,20 +19,27 @@ internal sealed class ClipboardHistoryService
                 var result = await WinRtClipboard.GetHistoryItemsAsync();
                 if (result.Status == ClipboardHistoryItemsResultStatus.Success)
                 {
-                    var items = new List<ClipboardItem>();
+                    var itemIndex = 0;
                     foreach (var historyItem in result.Items.Take(MaxItems))
                     {
-                        var item = await ReadDataPackageAsync(historyItem.Content);
-                        if (item is not null)
+                        if (!IsSupported(historyItem.Content))
                         {
-                            items.Add(item);
+                            continue;
                         }
+
+                        if (itemIndex >= index)
+                        {
+                            var item = await ReadDataPackageAsync(historyItem.Content);
+                            if (item is not null)
+                            {
+                                return new ClipboardReadResult(item, HasAnyItems: true, ReachedEnd: false);
+                            }
+                        }
+
+                        itemIndex++;
                     }
 
-                    if (items.Count > 0)
-                    {
-                        return items;
-                    }
+                    return new ClipboardReadResult(null, itemIndex > 0, ReachedEnd: true);
                 }
             }
         }
@@ -47,7 +54,22 @@ internal sealed class ClipboardHistoryService
             AddFallbackItem(current);
         }
 
-        return _fallbackItems;
+        if (_fallbackItems.Count == 0)
+        {
+            return new ClipboardReadResult(null, HasAnyItems: false, ReachedEnd: false);
+        }
+
+        if (index >= _fallbackItems.Count)
+        {
+            return new ClipboardReadResult(null, HasAnyItems: true, ReachedEnd: true);
+        }
+
+        return new ClipboardReadResult(_fallbackItems[index], HasAnyItems: true, ReachedEnd: false);
+    }
+
+    private static bool IsSupported(DataPackageView content)
+    {
+        return content.Contains(StandardDataFormats.Bitmap) || content.Contains(StandardDataFormats.Text);
     }
 
     private static async Task<ClipboardItem?> ReadDataPackageAsync(DataPackageView content)
@@ -146,3 +168,5 @@ internal sealed class ClipboardHistoryService
         return $"image:{image.Width}x{image.Height}:{image.GetHashCode():X8}";
     }
 }
+
+internal sealed record ClipboardReadResult(ClipboardItem? Item, bool HasAnyItems, bool ReachedEnd);
