@@ -11,7 +11,7 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
     private readonly MessageWindow _messageWindow;
     private readonly NotifyIcon _trayIcon;
     private readonly List<ViewerForm> _viewers = [];
-    private readonly HashSet<string> _shownSignatures = [];
+    private readonly Dictionary<string, int> _visibleSignatureCounts = [];
     private int _viewerCounter;
 
     public ClipboardPinViewerApp()
@@ -41,7 +41,7 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
 
     public async Task ShowNextAsync()
     {
-        var result = await _clipboardHistory.GetNextUnshownItemAsync(_shownSignatures);
+        var result = await _clipboardHistory.GetNextVisibleDistinctItemAsync(_visibleSignatureCounts.Keys.ToHashSet());
         try
         {
             if (!result.HasAnyItems)
@@ -52,11 +52,10 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
 
             if (result.ReachedEnd || result.Item is null)
             {
-                _trayIcon.ShowBalloonTip(1200, "Clipboard Pin Viewer", "系统剪贴板历史里没有新的可展示内容。", ToolTipIcon.Info);
+                _trayIcon.ShowBalloonTip(1200, "Clipboard Pin Viewer", "系统剪贴板历史里的内容已经在屏幕上。", ToolTipIcon.Info);
                 return;
             }
 
-            _shownSignatures.Add(result.Item.Signature);
             ShowItem(result.Item);
         }
         finally
@@ -93,7 +92,12 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
         var form = ViewerForm.Create(item, title);
         form.StartPosition = FormStartPosition.Manual;
         form.Location = GetCascadeLocation(form.Size);
-        form.FormClosed += (_, _) => _viewers.Remove(form);
+        AddVisibleSignature(item.Signature);
+        form.FormClosed += (_, _) =>
+        {
+            _viewers.Remove(form);
+            RemoveVisibleSignature(item.Signature);
+        };
 
         _viewers.Add(form);
         while (_viewers.Count > MaxVisibleWindows)
@@ -120,6 +124,27 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
         {
             viewer.Close();
         }
+    }
+
+    private void AddVisibleSignature(string signature)
+    {
+        _visibleSignatureCounts[signature] = _visibleSignatureCounts.TryGetValue(signature, out var count) ? count + 1 : 1;
+    }
+
+    private void RemoveVisibleSignature(string signature)
+    {
+        if (!_visibleSignatureCounts.TryGetValue(signature, out var count))
+        {
+            return;
+        }
+
+        if (count <= 1)
+        {
+            _visibleSignatureCounts.Remove(signature);
+            return;
+        }
+
+        _visibleSignatureCounts[signature] = count - 1;
     }
 
     protected override void Dispose(bool disposing)

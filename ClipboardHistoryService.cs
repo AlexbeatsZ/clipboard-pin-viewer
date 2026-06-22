@@ -10,13 +10,13 @@ internal sealed class ClipboardHistoryService
     private const int MaxItems = 30;
     private readonly List<ClipboardItem> _fallbackItems = [];
 
-    public async Task<ClipboardReadResult> GetNextUnshownItemAsync(IReadOnlySet<string> shownSignatures)
+    public async Task<ClipboardReadResult> GetNextVisibleDistinctItemAsync(IReadOnlySet<string> visibleSignatures)
     {
         var current = ReadCurrentClipboard();
         if (current is not null)
         {
-            AddFallbackItem(current);
-            if (!shownSignatures.Contains(current.Signature))
+            current = AddOrGetFallbackItem(current);
+            if (!visibleSignatures.Contains(current.Signature))
             {
                 return new ClipboardReadResult(current, HasAnyItems: true, ReachedEnd: false);
             }
@@ -44,7 +44,7 @@ internal sealed class ClipboardHistoryService
                             continue;
                         }
 
-                        if (!shownSignatures.Contains(item.Signature))
+                        if (!visibleSignatures.Contains(item.Signature))
                         {
                             return new ClipboardReadResult(item, HasAnyItems: true, ReachedEnd: false);
                         }
@@ -71,7 +71,7 @@ internal sealed class ClipboardHistoryService
 
         foreach (var item in _fallbackItems)
         {
-            if (!shownSignatures.Contains(item.Signature))
+            if (!visibleSignatures.Contains(item.Signature))
             {
                 return new ClipboardReadResult(item, HasAnyItems: true, ReachedEnd: false);
             }
@@ -154,12 +154,13 @@ internal sealed class ClipboardHistoryService
         return null;
     }
 
-    private void AddFallbackItem(ClipboardItem item)
+    private ClipboardItem AddOrGetFallbackItem(ClipboardItem item)
     {
         if (_fallbackItems.Count > 0 && _fallbackItems[0].Signature == item.Signature)
         {
+            var existing = _fallbackItems[0];
             item.Image?.Dispose();
-            return;
+            return existing;
         }
 
         _fallbackItems.Insert(0, item);
@@ -168,6 +169,8 @@ internal sealed class ClipboardHistoryService
             _fallbackItems[^1].Image?.Dispose();
             _fallbackItems.RemoveAt(_fallbackItems.Count - 1);
         }
+
+        return item;
     }
 
     private static string TextSignature(string text)
