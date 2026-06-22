@@ -11,7 +11,7 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
     private readonly MessageWindow _messageWindow;
     private readonly NotifyIcon _trayIcon;
     private readonly List<ViewerForm> _viewers = [];
-    private int _showIndex;
+    private readonly HashSet<string> _shownSignatures = [];
     private int _viewerCounter;
 
     public ClipboardPinViewerApp()
@@ -37,12 +37,11 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
 
     public void OnClipboardChanged()
     {
-        _showIndex = 0;
     }
 
     public async Task ShowNextAsync()
     {
-        var result = await _clipboardHistory.GetItemAsync(_showIndex);
+        var result = await _clipboardHistory.GetNextUnshownItemAsync(_shownSignatures);
         try
         {
             if (!result.HasAnyItems)
@@ -53,12 +52,12 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
 
             if (result.ReachedEnd || result.Item is null)
             {
-                _trayIcon.ShowBalloonTip(1200, "Clipboard Pin Viewer", "已经到达系统剪贴板历史末尾。", ToolTipIcon.Info);
+                _trayIcon.ShowBalloonTip(1200, "Clipboard Pin Viewer", "系统剪贴板历史里没有新的可展示内容。", ToolTipIcon.Info);
                 return;
             }
 
-            ShowItem(result.Item, _showIndex + 1);
-            _showIndex++;
+            _shownSignatures.Add(result.Item.Signature);
+            ShowItem(result.Item);
         }
         finally
         {
@@ -87,10 +86,10 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
         return menu;
     }
 
-    private void ShowItem(ClipboardItem item, int index)
+    private void ShowItem(ClipboardItem item)
     {
         _viewerCounter++;
-        var title = item.IsImage ? $"剪贴板图片 #{index}" : $"剪贴板文字 #{index}";
+        var title = item.IsImage ? $"剪贴板图片 #{_viewerCounter}" : $"剪贴板文字 #{_viewerCounter}";
         var form = ViewerForm.Create(item, title);
         form.StartPosition = FormStartPosition.Manual;
         form.Location = GetCascadeLocation(form.Size);

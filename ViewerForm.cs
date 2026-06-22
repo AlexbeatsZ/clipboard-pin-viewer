@@ -5,7 +5,7 @@ namespace ClipboardPinViewer;
 internal sealed partial class ViewerForm : Form
 {
     private const int PaddingSize = 1;
-    private const int ResizeGripSize = 18;
+    private const int ResizeGripSize = 30;
     private readonly Image? _ownedImage;
     private readonly double? _fixedAspectRatio;
 

@@ -10,8 +10,18 @@ internal sealed class ClipboardHistoryService
     private const int MaxItems = 30;
     private readonly List<ClipboardItem> _fallbackItems = [];
 
-    public async Task<ClipboardReadResult> GetItemAsync(int index)
+    public async Task<ClipboardReadResult> GetNextUnshownItemAsync(IReadOnlySet<string> shownSignatures)
     {
+        var current = ReadCurrentClipboard();
+        if (current is not null)
+        {
+            AddFallbackItem(current);
+            if (!shownSignatures.Contains(current.Signature))
+            {
+                return new ClipboardReadResult(current, HasAnyItems: true, ReachedEnd: false);
+            }
+        }
+
         try
         {
             if (WinRtClipboard.IsHistoryEnabled())
@@ -19,7 +29,7 @@ internal sealed class ClipboardHistoryService
                 var result = await WinRtClipboard.GetHistoryItemsAsync();
                 if (result.Status == ClipboardHistoryItemsResultStatus.Success)
                 {
-                    var itemIndex = 0;
+                    var supportedCount = 0;
                     foreach (var historyItem in result.Items.Take(MaxItems))
                     {
                         if (!IsSupported(historyItem.Content))
@@ -27,19 +37,25 @@ internal sealed class ClipboardHistoryService
                             continue;
                         }
 
-                        if (itemIndex >= index)
+                        supportedCount++;
+                        var item = await ReadDataPackageAsync(historyItem.Content);
+                        if (item is null)
                         {
-                            var item = await ReadDataPackageAsync(historyItem.Content);
-                            if (item is not null)
-                            {
-                                return new ClipboardReadResult(item, HasAnyItems: true, ReachedEnd: false);
-                            }
+                            continue;
                         }
 
-                        itemIndex++;
+                        if (!shownSignatures.Contains(item.Signature))
+                        {
+                            return new ClipboardReadResult(item, HasAnyItems: true, ReachedEnd: false);
+                        }
+
+                        if (item.DisposeImageAfterUse)
+                        {
+                            item.Image?.Dispose();
+                        }
                     }
 
-                    return new ClipboardReadResult(null, itemIndex > 0, ReachedEnd: true);
+                    return new ClipboardReadResult(null, supportedCount > 0 || current is not null, ReachedEnd: true);
                 }
             }
         }
@@ -48,23 +64,20 @@ internal sealed class ClipboardHistoryService
             // Fall back to the current clipboard below. Clipboard history can be blocked by policy or transient access failures.
         }
 
-        var current = ReadCurrentClipboard();
-        if (current is not null)
-        {
-            AddFallbackItem(current);
-        }
-
         if (_fallbackItems.Count == 0)
         {
             return new ClipboardReadResult(null, HasAnyItems: false, ReachedEnd: false);
         }
 
-        if (index >= _fallbackItems.Count)
+        foreach (var item in _fallbackItems)
         {
-            return new ClipboardReadResult(null, HasAnyItems: true, ReachedEnd: true);
+            if (!shownSignatures.Contains(item.Signature))
+            {
+                return new ClipboardReadResult(item, HasAnyItems: true, ReachedEnd: false);
+            }
         }
 
-        return new ClipboardReadResult(_fallbackItems[index], HasAnyItems: true, ReachedEnd: false);
+        return new ClipboardReadResult(null, HasAnyItems: true, ReachedEnd: true);
     }
 
     private static bool IsSupported(DataPackageView content)
@@ -165,7 +178,10 @@ internal sealed class ClipboardHistoryService
 
     private static string ImageSignature(Image image)
     {
-        return $"image:{image.Width}x{image.Height}:{image.GetHashCode():X8}";
+        using var stream = new MemoryStream();
+        image.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+        var bytes = SHA256.HashData(stream.ToArray());
+        return $"image:{image.Width}x{image.Height}:{Convert.ToHexString(bytes.AsSpan(0, 8))}";
     }
 }
 
