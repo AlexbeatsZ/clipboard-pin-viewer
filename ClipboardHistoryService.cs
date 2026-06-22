@@ -1,0 +1,148 @@
+using System.Security.Cryptography;
+using System.Text;
+using Windows.ApplicationModel.DataTransfer;
+using WinRtClipboard = Windows.ApplicationModel.DataTransfer.Clipboard;
+
+namespace ClipboardPinViewer;
+
+internal sealed class ClipboardHistoryService
+{
+    private const int MaxItems = 30;
+    private readonly List<ClipboardItem> _fallbackItems = [];
+
+    public async Task<IReadOnlyList<ClipboardItem>> GetItemsAsync()
+    {
+        try
+        {
+            if (WinRtClipboard.IsHistoryEnabled())
+            {
+                var result = await WinRtClipboard.GetHistoryItemsAsync();
+                if (result.Status == ClipboardHistoryItemsResultStatus.Success)
+                {
+                    var items = new List<ClipboardItem>();
+                    foreach (var historyItem in result.Items.Take(MaxItems))
+                    {
+                        var item = await ReadDataPackageAsync(historyItem.Content);
+                        if (item is not null)
+                        {
+                            items.Add(item);
+                        }
+                    }
+
+                    if (items.Count > 0)
+                    {
+                        return items;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to the current clipboard below. Clipboard history can be blocked by policy or transient access failures.
+        }
+
+        var current = ReadCurrentClipboard();
+        if (current is not null)
+        {
+            AddFallbackItem(current);
+        }
+
+        return _fallbackItems;
+    }
+
+    private static async Task<ClipboardItem?> ReadDataPackageAsync(DataPackageView content)
+    {
+        if (content.Contains(StandardDataFormats.Bitmap))
+        {
+            try
+            {
+                var reference = await content.GetBitmapAsync();
+                using var randomStream = await reference.OpenReadAsync();
+                using var stream = randomStream.AsStreamForRead();
+                using var loaded = Image.FromStream(stream);
+                var bitmap = new Bitmap(loaded);
+                return new ClipboardItem("image", null, bitmap, ImageSignature(bitmap), DisposeImageAfterUse: true);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        if (content.Contains(StandardDataFormats.Text))
+        {
+            try
+            {
+                var text = await content.GetTextAsync();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    return new ClipboardItem("text", text, null, TextSignature(text));
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static ClipboardItem? ReadCurrentClipboard()
+    {
+        try
+        {
+            if (System.Windows.Forms.Clipboard.ContainsImage())
+            {
+                using var image = System.Windows.Forms.Clipboard.GetImage();
+                if (image is not null)
+                {
+                    var bitmap = new Bitmap(image);
+                    return new ClipboardItem("image", null, bitmap, ImageSignature(bitmap));
+                }
+            }
+
+            if (System.Windows.Forms.Clipboard.ContainsText())
+            {
+                var text = System.Windows.Forms.Clipboard.GetText();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    return new ClipboardItem("text", text, null, TextSignature(text));
+                }
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private void AddFallbackItem(ClipboardItem item)
+    {
+        if (_fallbackItems.Count > 0 && _fallbackItems[0].Signature == item.Signature)
+        {
+            item.Image?.Dispose();
+            return;
+        }
+
+        _fallbackItems.Insert(0, item);
+        while (_fallbackItems.Count > MaxItems)
+        {
+            _fallbackItems[^1].Image?.Dispose();
+            _fallbackItems.RemoveAt(_fallbackItems.Count - 1);
+        }
+    }
+
+    private static string TextSignature(string text)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(text));
+        return $"text:{Convert.ToHexString(bytes.AsSpan(0, 8))}:{text.Length}";
+    }
+
+    private static string ImageSignature(Image image)
+    {
+        return $"image:{image.Width}x{image.Height}:{image.GetHashCode():X8}";
+    }
+}
