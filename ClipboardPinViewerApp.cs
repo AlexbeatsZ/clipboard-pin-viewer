@@ -10,6 +10,7 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
     private readonly ClipboardHistoryService _clipboardHistory = new();
     private readonly MessageWindow _messageWindow;
     private readonly NotifyIcon _trayIcon;
+    private readonly Icon _applicationIcon;
     private readonly List<ViewerForm> _viewers = [];
     private readonly Dictionary<string, int> _visibleSignatureCounts = [];
     private int _viewerCounter;
@@ -24,9 +25,11 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
             MessageBox.Show("注册 F1 全局热键失败。请关闭占用 F1 的程序后重启。", "Clipboard Pin Viewer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
+        _applicationIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!)
+            ?? (Icon)SystemIcons.Application.Clone();
         _trayIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = _applicationIcon,
             Text = "Clipboard Pin Viewer",
             Visible = true,
             ContextMenuStrip = BuildTrayMenu()
@@ -154,6 +157,7 @@ internal sealed class ClipboardPinViewerApp : ApplicationContext
             CloseAllViewers();
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
+            _applicationIcon.Dispose();
             NativeMethods.UnregisterHotKey(_messageWindow.Handle, HotkeyId);
             NativeMethods.RemoveClipboardFormatListener(_messageWindow.Handle);
             _messageWindow.DestroyHandle();
