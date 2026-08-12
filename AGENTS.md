@@ -13,6 +13,7 @@
 - F1 behavior should prefer the current clipboard content first, then scan system history for the newest content that is not already visible on screen.
 - The small build-output exe is an apphost and must stay beside its dll/json dependencies; the single-file Release exe bundles `Microsoft.Windows.SDK.NET.dll`, which is the main size cost of using C# WinRT clipboard history.
 - The Windows EXE and tray must use the same orange Fluent Clipboard Search icon from `assets/app-icon.ico`; leaving `SystemIcons.Application` in the tray defeats the identification goal even when the PE icon is embedded.
+- Deployed framework-dependent apphost: 188,928 bytes, SHA-256 `D114A0725E7AB93B37246403F75F003A20DF7BC8174E7D9A162768B62194CCD8`, source revision `d598105`; the adjacent DLL/runtime dependencies remain in the portable folder.
 
 # Task Board
 
@@ -26,4 +27,4 @@
 - [completed] Change F1 duplicate skipping to only skip content currently visible on screen.
 - [completed] Commit, push, and create GitHub Release v0.1.3 with visible-window duplicate logic.
 - [completed] Add a smaller framework-dependent zip asset to v0.1.3 for folder-based use.
-- [active] Embed the Fluent clipboard icon, deploy it to the current portable folder, verify the running tray process, then commit and publish the source change.
+- [completed] Embed the Fluent clipboard icon, deploy it to the current portable folder, verify the embedded icon and running tray process, then commit and push the source change.
